@@ -27,14 +27,31 @@ def fetch_contacts():
         "Authorization": f"Bearer {AIRTABLE_PAT}",
         "Content-Type": "application/json",
     }
+    # Initialize parameters and an empty list to store all records
     params = {"filterByFormula": "{Send} = 1"}
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        if response.status_code == 200:
-            return response.json().get("records", [])
-        return []
-    except Exception:
-        return []
+    all_records = []
+
+    while True:
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                all_records.extend(data.get("records", []))
+                
+                # Check if Airtable says there are more records left
+                offset = data.get("offset")
+                if offset:
+                    params["offset"] = offset  # Pass the offset to fetch the next 100
+                else:
+                    break  # No more records left, exit the loop
+            else:
+                st.error(f"Airtable Error: {response.text}")
+                break
+        except Exception as e:
+            st.error(f"Failed to connect to Airtable: {e}")
+            break
+            
+    return all_records
 
 def send_email(to_email, salutation, company_name):
     html_template = f"""
