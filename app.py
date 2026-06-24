@@ -83,7 +83,7 @@ def send_email(to_email, salutation, company_name):
     </html>
     """
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Exploring Data Scientist / ML Engineer opportunities at {company_name}"
+    msg["Subject"] = f"[1.5 YOE]Data Scientist / ML Engineer opportunities at {company_name}"
     msg["From"] = SENDER_EMAIL
     msg["To"] = to_email
     msg.attach(MIMEText(html_template, "html"))
