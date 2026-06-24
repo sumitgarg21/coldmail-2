@@ -58,7 +58,7 @@ def send_email(to_email, salutation, company_name):
     <!DOCTYPE html>
     <html lang="en">
       <head><meta charset="UTF-8" /></head>
-      <body style="font-family: Georgia, serif; line-height: 1.6;">
+      <body style="font-family: Arial, sans-serif; line-height: 1.4;">
           <p>Hi {salutation},</p>
           <p>
             I'm <strong>Sumit Garg</strong> graduated from <strong>NIT Silchar</strong>, currently working as an <strong>Associate Data Scientist at ZS</strong> 
