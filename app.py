@@ -1,24 +1,25 @@
 import os
-import time
 import smtplib
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import requests
 import streamlit as st
 
-# --- SECURE CONFIGURATION (Palled from Streamlit Cloud Secrets) ---
+# --- SECURE CONFIGURATION (Pulled from Streamlit Cloud Secrets) ---
 AIRTABLE_PAT = st.secrets["AIRTABLE_PAT"]
 BASE_ID = st.secrets["BASE_ID"]
 TABLE_NAME = st.secrets["TABLE_NAME"]
 
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-SENDER_EMAIL = st.secrets["SENDER_EMAIL"] 
-SENDER_PASSWORD = st.secrets["SENDER_PASSWORD"] 
+SENDER_EMAIL = st.secrets["SENDER_EMAIL"]
+SENDER_PASSWORD = st.secrets["SENDER_PASSWORD"]
 
 # --- INITIALIZE SESSION STATE ---
 if "sending_in_progress" not in st.session_state:
     st.session_state.sending_in_progress = False
+
 
 # --- FUNCTIONS ---
 def fetch_contacts():
@@ -27,7 +28,6 @@ def fetch_contacts():
         "Authorization": f"Bearer {AIRTABLE_PAT}",
         "Content-Type": "application/json",
     }
-    # Initialize parameters and an empty list to store all records
     params = {"filterByFormula": "{Send} = 1"}
     all_records = []
 
@@ -37,23 +37,23 @@ def fetch_contacts():
             if response.status_code == 200:
                 data = response.json()
                 all_records.extend(data.get("records", []))
-                
-                # Check if Airtable says there are more records left
+
                 offset = data.get("offset")
                 if offset:
-                    params["offset"] = offset  # Pass the offset to fetch the next 100
+                    params["offset"] = offset
                 else:
-                    break  # No more records left, exit the loop
+                    break
             else:
                 st.error(f"Airtable Error: {response.text}")
                 break
         except Exception as e:
             st.error(f"Failed to connect to Airtable: {e}")
             break
-            
+
     return all_records
 
-def send_email(to_email, salutation, company_name):
+
+def create_email_message(to_email, salutation, company_name):
     html_template = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -83,19 +83,14 @@ def send_email(to_email, salutation, company_name):
     </html>
     """
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[1.5 YOE]Data Scientist / ML Engineer opportunities at {company_name}"
+    msg["Subject"] = (
+        f"[1.5 YOE] Data Scientist / ML Engineer opportunities at {company_name}"
+    )
     msg["From"] = SENDER_EMAIL
     msg["To"] = to_email
     msg.attach(MIMEText(html_template, "html"))
+    return msg
 
-    try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
-        return True
-    except Exception:
-        return False
 
 # --- STREAMLIT UI ---
 st.title("🚀 Outreach Portal")
@@ -112,37 +107,64 @@ else:
 if st.session_state.sending_in_progress:
     status_text = st.empty()
     progress_bar = st.progress(0)
-    
+
+    status_text.info("Fetching contacts from Airtable...")
     records = fetch_contacts()
 
     if not records:
         st.warning("No records found with Send = 1.")
         st.session_state.sending_in_progress = False
         st.rerun()
-    
+
     y = len(records)
     x = 0
-    
+
+    # Open single SMTP connection before looping
+    status_text.info("Connecting to Gmail SMTP server...")
+    try:
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+    except Exception as e:
+        st.error(f"Failed to authenticate with Gmail: {e}")
+        st.session_state.sending_in_progress = False
+        st.stop()
+
+    # Stream emails over the single open connection
     for index, record in enumerate(records):
         fields = record.get("fields", {})
         email = fields.get("Email")
         salutation = fields.get("Salutation", "Sir/Mam")
         company = fields.get("Company", "your company")
-        
+
         if email:
             status_text.text(f"Sending ({index + 1}/{y}) to {email}...")
-            if send_email(email, salutation, company):
+            msg = create_email_message(email, salutation, company)
+
+            try:
+                server.sendmail(SENDER_EMAIL, email, msg.as_string())
                 x += 1
+            except Exception as send_error:
+                st.write(f"⚠️ Failed sending to {email}: {send_error}")
+
             progress_bar.progress((index + 1) / y)
-            time.sleep(2.0)  # Safe spacing for mobile execution stability
+            time.sleep(0.1)  # Minimal delay for smooth UI progress bar
+
+    # Close connection cleanly when batch finishes
+    try:
+        server.quit()
+    except Exception:
+        pass
 
     status_text.empty()
     progress_bar.empty()
-    
+
     if x == y:
         st.success(f"🎉 Success! {x}/{y} mails sent successfully.")
     else:
-        st.warning(f"⚠️ Completed with exceptions: {x}/{y} mails sent successfully.")
+        st.warning(
+            f"⚠️ Completed with exceptions: {x}/{y} mails sent successfully."
+        )
 
     st.session_state.sending_in_progress = False
     if st.button("Clear & Reset Page"):
